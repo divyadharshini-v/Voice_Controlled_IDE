@@ -1,27 +1,30 @@
-import React, { useState } from 'react';
-import CodeEditor from './components/Editor';
-import MicInput from './components/MicInput';
-import axios from 'axios';
+import React, { useState } from "react";
+import MicInput from "./MicInput";
+import CodeEditor from "./CodeEditor";
 
 const App = () => {
-  const [code, setCode] = useState('');
-
-  const handleVoiceCommand = async (text) => {
-    console.log("Voice Input:", text);
-    try {
-      const response = await axios.post('http://localhost:5000/api/parse', { text });
-      setCode((prev) => prev + '\n' + response.data.code);
-    } catch (error) {
-      alert('Error connecting to backend');
-      console.error(error);
-    }
-  };
+  const [transcript, setTranscript] = useState("");
+  const [manualPrompt, setManualPrompt] = useState("");
+  const [generatedCode, setGeneratedCode] = useState("");
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>CodeVoice IDE</h1>
-      <MicInput onTranscript={handleVoiceCommand} />
-      <CodeEditor code={code} setCode={setCode} />
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-6">
+      <h1 className="text-4xl font-bold mb-6 text-center">🎧 CodeVoice</h1>
+
+      <MicInput
+        setTranscript={setTranscript}
+        transcript={transcript}
+        manualPrompt={manualPrompt}
+        setManualPrompt={setManualPrompt}
+        setGeneratedCode={setGeneratedCode}
+      />
+
+      <CodeEditor
+        transcript={transcript}
+        manualPrompt={manualPrompt}
+        setGeneratedCode={setGeneratedCode}
+        generatedCode={generatedCode}
+      />
     </div>
   );
 };
