@@ -1,40 +1,23 @@
+# routes.py
 from flask import Blueprint, request, jsonify
-from transformer_handler import analyze_sentiment
-import requests
+from transformer_handler import generate_code_from_prompt
 
-routes_blueprint = Blueprint("routes", __name__)
+routes_blueprint = Blueprint('routes', __name__)
 
-@routes_blueprint.route("/api/parse", methods=["POST"])
-def parse():
-    try:
-        data = request.get_json(force=True)
-        command = data.get("command", "").strip()
+@routes_blueprint.route('/api/parse', methods=['POST'])
+def parse_intent_and_generate_code():
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return jsonify({"error": "Prompt is empty"}), 400
+    code = generate_code_from_prompt(prompt)
+    return jsonify({"code": code})
 
-        if not command:
-            return jsonify({"error": "Empty command provided"}), 400
-
-        sentiment = analyze_sentiment(command)
-
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "starcoder",
-                "prompt": command,
-                "stream": False
-            },
-            timeout=60
-        )
-
-        if response.status_code != 200:
-            return jsonify({"error": "Ollama API error"}), 500
-
-        result = response.json()
-        generated_code = result.get("response", "").strip()
-
-        return jsonify({
-            "code": generated_code,
-            "sentiment": sentiment
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@routes_blueprint.route('/api/generate-code', methods=['POST'])
+def generate_code():
+    data = request.get_json()
+    prompt = data.get("text", "")
+    if not prompt:
+        return jsonify({"error": "Prompt is empty"}), 400
+    code = generate_code_from_prompt(prompt)
+    return jsonify({"code": code})
