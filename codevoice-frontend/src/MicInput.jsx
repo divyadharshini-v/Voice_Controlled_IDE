@@ -6,7 +6,6 @@ const MicInput = ({
   transcript,
   manualPrompt,
   setManualPrompt,
-  setGeneratedCode,
 }) => {
   const mediaRecorderRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -19,7 +18,9 @@ const MicInput = ({
       audioChunks.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.current.push(e.data);
+        if (e.data.size > 0) {
+          audioChunks.current.push(e.data);
+        }
       };
 
       mediaRecorderRef.current.onstop = async () => {
@@ -28,25 +29,28 @@ const MicInput = ({
         formData.append("audio", audioBlob);
 
         try {
-          const res = await axios.post("http://localhost:5000/api/transcribe", formData);
-          const text = res.data.transcript;
+          const response = await axios.post("http://localhost:5000/api/transcribe", formData);
+          const text = response.data.transcript;
           setTranscript(text);
-        } catch (err) {
-          console.error("Transcription failed:", err);
+        } catch (error) {
+          console.error("Transcription failed:", error);
+          alert("Failed to transcribe audio.");
         }
       };
 
       mediaRecorderRef.current.start();
       setIsRecording(true);
-    } catch (err) {
-      alert("Microphone access denied or not available");
-      console.error("Mic error:", err);
+    } catch (error) {
+      console.error("Microphone access denied or not available:", error);
+      alert("Microphone access denied or not available.");
     }
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current.stop();
-    setIsRecording(false);
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
   };
 
   return (
