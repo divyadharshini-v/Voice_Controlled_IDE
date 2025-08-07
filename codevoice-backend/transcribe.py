@@ -16,5 +16,5 @@ def transcribe():
         audio_path = tmp.name
         audio_file.save(audio_path)
 
-    result = model.transcribe(audio_path,language="en")
+    result = model.transcribe(audio_path, language="en")
     return jsonify({"transcript": result["text"]})
