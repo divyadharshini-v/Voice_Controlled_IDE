@@ -10,7 +10,7 @@ const NLPVoiceApp = () => {
   const handleTranscript = async (spokenText) => {
     setInputText(spokenText);
     try {
-      const response = await axios.post("http://localhost:5000/api/parse", {
+      const response = await axios.post("http://localhost:5001/api/parse", {
         text: spokenText,
       });
 
