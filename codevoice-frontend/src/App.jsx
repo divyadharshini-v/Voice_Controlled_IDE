@@ -1,252 +1,252 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 
-function LoadingButton({ onClick, loading, children, color }) {
-  const colors = {
-    purple: "bg-purple-600 hover:bg-purple-700 focus:ring-purple-300",
-    indigo: "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-300",
-    gray: "bg-gray-600 hover:bg-gray-700 focus:ring-gray-300",
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className={`px-6 py-3 text-white text-lg font-semibold rounded shadow 
-                  disabled:opacity-50 focus:outline-none focus:ring-4 flex items-center gap-2 justify-center 
-                  ${colors[color] || colors.purple}`}
-    >
-      {loading && (
-        <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-white border-solid"></span>
-      )}
-      {children}
-    </button>
-  );
-}
-
-export default function App() {
+function App() {
   const [transcript, setTranscript] = useState("");
   const [manualPrompt, setManualPrompt] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [compileOutput, setCompileOutput] = useState("");
+  const [userInput, setUserInput] = useState("");
+  const [micLoading, setMicLoading] = useState(false);
+  const [generateLoading, setGenerateLoading] = useState(false);
+  const [compileLoading, setCompileLoading] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [loadingGenerate, setLoadingGenerate] = useState(false);
-  const [loadingCompile, setLoadingCompile] = useState(false);
-  const [compileInputs, setCompileInputs] = useState("");
+  const [language, setLanguage] = useState("python");
+
+  const transcriptEndRef = useRef(null);
+  const codeEndRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  // 🎤 Voice recording
-  const handleStartRecording = async () => {
-    setTranscript("");
-    setRecording(true);
+  const speak = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleMicClick = async () => {
+    if (recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    } else {
+      setMicLoading(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          await handleTranscribe(audioBlob);
+        };
+
+        mediaRecorder.start();
+        setRecording(true);
+        speak("Recording started");
+      } catch (err) {
+        console.error(err);
+      }
+      setMicLoading(false);
+    }
+  };
+
+  const handleTranscribe = async (audioBlob) => {
+    setMicLoading(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      audioChunksRef.current = [];
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-
-        const formData = new FormData();
-        formData.append("file", audioBlob, "recording.webm");
-
-        try {
-          const res = await fetch("http://localhost:5000/api/transcribe", {
-            method: "POST",
-            body: formData,
-          });
-          const data = await res.json();
-          if (res.ok) {
-            setTranscript(data.transcript);
-          } else {
-            setTranscript("Error: " + data.error);
-          }
-        } catch (err) {
-          setTranscript("Fetch error: " + err.message);
-        }
-        setRecording(false);
-      };
-
-      mediaRecorderRef.current.start();
-
-      // Automatically stop recording after 4 seconds
-      setTimeout(() => {
-        mediaRecorderRef.current.stop();
-        stream.getTracks().forEach((track) => track.stop());
-      }, 4000);
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.wav");
+      const res = await axios.post("http://localhost:8000/transcribe/", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      console.log("Transcribe response:", res.data);
+      if (res.data.transcript) {
+        setTranscript((prev) => prev + " " + res.data.transcript);
+      } else if (res.data.error) {
+        setTranscript("❌ " + res.data.error);
+        speak("Error transcribing audio.");
+      } else {
+        setTranscript("❌ No transcript received.");
+        speak("No transcript received.");
+      }
     } catch (err) {
       console.error(err);
-      alert("Could not access microphone.");
-      setRecording(false);
+      setTranscript("❌ Error transcribing audio.");
+      speak("Error transcribing audio.");
     }
+    setMicLoading(false);
   };
 
-  // ⚡ Generate code
   const handleGenerateCode = async () => {
-    const promptToSend = manualPrompt.trim() || transcript.trim();
-    console.log("Prompt to send:", promptToSend);
-
-    if (!promptToSend) {
-      alert("No prompt provided");
-      return;
-    }
-
-    setLoadingGenerate(true);
+    const promptToSend = transcript.trim() || manualPrompt.trim();
+    if (!promptToSend) return;
+    setGenerateLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/generate-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: promptToSend }),
+      const formData = new FormData();
+      formData.append("problem", promptToSend);
+      formData.append("language", language);
+      const res = await axios.post("http://localhost:8000/generate-code", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      const data = await res.json();
-      console.log("Generated code:", data.code);
-      setGeneratedCode(data.code || "");
-    } catch (error) {
-      console.error("Error generating code:", error);
-      alert("Error generating code.");
+      setGeneratedCode(res.data.code || "// No code generated");
+      speak("Code generated successfully.");
+    } catch (err) {
+      console.error(err);
+      setGeneratedCode("// Error generating code");
+      speak("Error generating code.");
     }
-    setLoadingGenerate(false);
+    setGenerateLoading(false);
   };
 
-  // 🛠 Compile code
   const handleCompile = async () => {
-    if (!generatedCode.trim()) {
-      alert("No code to compile");
-      return;
-    }
-    setLoadingCompile(true);
-    setCompileOutput("");
+    if (!generatedCode) return;
+    setCompileLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/compile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: generatedCode,
-          inputs: compileInputs
-            ? compileInputs
-                .split(",")
-                .map((i) => i.trim())
-                .filter((i) => i.length > 0)
-            : [],
-        }),
+      const formData = new FormData();
+      formData.append("code", generatedCode);
+      formData.append("language", language);
+      formData.append("inputs", userInput);
+      const res = await axios.post("http://localhost:8000/compile", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      const data = await res.json();
-      setCompileOutput(
-        data.stdout || data.stderr || "// No output or errors returned"
-      );
-    } catch (error) {
-      console.error("Error compiling code:", error);
-      alert("Error compiling code.");
+      const output = res.data.stdout || res.data.stderr || res.data.compile_output || "// No output received";
+      setCompileOutput(output);
+      speak("Compilation finished.");
+    } catch (err) {
+      console.error(err);
+      setCompileOutput("// Error compiling code");
+      speak("Error compiling code.");
     }
-    setLoadingCompile(false);
+    setCompileLoading(false);
   };
 
-  // 💾 Save code as file
-  const handleSave = () => {
-    if (!generatedCode.trim()) {
-      alert("No code to save");
-      return;
-    }
-    const blob = new Blob([generatedCode], { type: "text/plain;charset=utf-8" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "code.py";
-    link.click();
+  const handleSaveFile = () => {
+    const blob = new Blob([generatedCode], { type: "text/plain" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "generated_code.py";
+    a.click();
+    window.URL.revokeObjectURL(url);
+    speak("File saved successfully.");
   };
+
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [transcript]);
+
+  useEffect(() => {
+    codeEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [generatedCode, compileOutput]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-100 via-white to-purple-100 flex flex-col items-center">
-      {/* Header */}
-      <header className="w-full text-center py-8 bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg">
-        <h1 className="text-4xl font-bold">🎙 Code with Your Voice</h1>
-        <p className="mt-2 text-lg opacity-90">
-          No keyboard? No problem — your voice is the new IDE.
-        </p>
-      </header>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-200 to-purple-50 px-4">
+      <div className="flex flex-col items-center w-full max-w-2xl">
+        {/* Header */}
+        <header className="w-full text-center py-6 bg-purple-600 text-white rounded-lg mb-6 shadow-lg">
+          <h1 className="text-3xl font-bold">🎤 Code with Your Voice</h1>
+          <p className="mt-1 text-sm opacity-90">No keyboard? No problem — your voice is the new IDE.</p>
+        </header>
 
-      {/* Main content */}
-      <div className="w-full max-w-5xl p-6 space-y-6">
-        {/* Mic Button */}
-        <div className="flex flex-col items-center">
+        {/* Microphone */}
+        <div className="mb-4 flex flex-col items-center">
           <button
-            onClick={handleStartRecording}
-            disabled={recording}
-            className={`w-28 h-28 rounded-full flex items-center justify-center shadow-xl text-4xl transition-all focus:outline-none focus:ring-4 ${
-              recording
-                ? "bg-red-500 animate-pulse focus:ring-red-300"
-                : "bg-green-500 hover:bg-green-600 focus:ring-green-300"
+            className={`p-6 rounded-full shadow-lg text-2xl text-white ${
+              recording ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
             }`}
+            onClick={handleMicClick}
+            disabled={micLoading}
           >
-            {recording ? "🎙" : "🎤"}
+            {micLoading ? "⏳" : recording ? "⏹️" : "🎤"}
           </button>
-          <p className="mt-3 text-gray-700 text-lg">
-            {recording ? "Listening..." : "Click to speak your code idea"}
-          </p>
+          <p className="text-center mt-2 text-gray-700">{recording ? "Recording..." : "Click to speak your code idea"}</p>
         </div>
 
-        {/* Transcript + Manual Input */}
-        <div className="bg-white shadow rounded-lg p-4 space-y-4">
-          <textarea
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            placeholder="Transcript will appear here..."
-            rows={2}
-            className="w-full border rounded p-3 text-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
-          <input
-            type="text"
-            value={manualPrompt}
-            onChange={(e) => setManualPrompt(e.target.value)}
-            placeholder="Or type your prompt..."
-            className="w-full border rounded p-3 text-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
+        {/* Transcript */}
+        <textarea
+          className="w-full p-3 mb-3 rounded-lg border shadow-sm focus:ring-2 focus:ring-purple-500 resize-none"
+          rows="3"
+          placeholder="Transcript will appear here..."
+          value={transcript}
+          onChange={(e) => setTranscript(e.target.value)}
+        ></textarea>
+      {/* Manual Prompt */}
+        <input
+          className="w-full p-3 mb-4 rounded-lg border shadow-sm focus:ring-2 focus:ring-purple-500"
+          type="text"
+          placeholder="Or type your prompt..."
+          value={manualPrompt}
+          onChange={(e) => setManualPrompt(e.target.value)}
+        />
+        {/* Language Selector */}
+        <div className="w-full mb-4">
+          <label className="block font-medium mb-1">Select Language:</label>
+          <select
+            className="w-full p-2 border rounded"
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+          >
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="cpp">C++</option>
+              <option value="c">C</option>
+            <option value="java">Java</option>
+          </select>
         </div>
+        
 
         {/* Generate Code */}
-        <div className="bg-white shadow rounded-lg p-4 space-y-4">
-          <div className="flex gap-3">
-            <LoadingButton
-              onClick={handleGenerateCode}
-              loading={loadingGenerate}
-              color="purple"
-            >
-              ⚡ Generate Code
-            </LoadingButton>
+        <button
+          onClick={handleGenerateCode}
+          disabled={generateLoading}
+          className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg shadow mb-4"
+        >
+          {generateLoading ? "Generating..." : "⚡ Generate Code"}
+        </button>
 
-            <LoadingButton onClick={handleSave} loading={false} color="gray">
-              💾 Save
-            </LoadingButton>
-          </div>
-          <pre className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto min-h-[150px] text-sm">
-            {generatedCode || "// Your generated code will appear here"}
-          </pre>
+        {/* Code Output */}
+        <div className="w-full bg-gray-900 text-green-400 rounded-lg p-4 mb-4 overflow-auto min-h-[150px] font-mono">
+          <pre>{generatedCode || "// Your generated code will appear here"}</pre>
+          <div ref={codeEndRef}></div>
         </div>
 
-        {/* Compile & Output */}
-        <div className="bg-white shadow rounded-lg p-4 space-y-4">
-          <input
-            type="text"
-            value={compileInputs}
-            onChange={(e) => setCompileInputs(e.target.value)}
-            placeholder="Enter inputs separated by commas"
-            className="w-full border rounded p-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-          <LoadingButton
-            onClick={handleCompile}
-            loading={loadingCompile}
-            color="indigo"
-          >
-            🛠 Compile & Run
-          </LoadingButton>
-          <pre className="bg-black text-white p-4 rounded-lg overflow-x-auto min-h-[100px] text-sm">
-            {compileOutput || "// Output will appear here"}
-          </pre>
+        {/* User Input for Compiler */}
+        <textarea
+          className="w-full p-3 mb-3 rounded-lg border shadow-sm focus:ring-2 focus:ring-blue-500 resize-none"
+          rows="3"
+          placeholder="Enter input for your program here..."
+          value={userInput}
+          onChange={e => setUserInput(e.target.value)}
+        ></textarea>
+        {/* Compile & Run */}
+        <button
+          onClick={handleCompile}
+          disabled={compileLoading || !generatedCode}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg shadow mb-4"
+        >
+          {compileLoading ? "Running..." : "🛠️ Compile & Run"}
+        </button>
+
+        {/* Program Output */}
+        <div className="w-full bg-black text-green-400 rounded-lg p-4 mb-8 overflow-auto min-h-[100px] font-mono">
+          <pre>{compileOutput || "// Output will appear here"}</pre>
+          <div ref={transcriptEndRef}></div>
         </div>
+
+        {/* Save File */}
+        <button
+          onClick={handleSaveFile}
+          disabled={!generatedCode}
+          className="w-full bg-gray-700 hover:bg-gray-800 text-white py-2 px-4 rounded-lg shadow mb-4"
+        >
+          💾 Save Code
+        </button>
       </div>
     </div>
   );
 }
+
+export default App;

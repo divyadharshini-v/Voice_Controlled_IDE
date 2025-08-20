@@ -1,104 +1,84 @@
-import React, { useState, useRef, useEffect } from "react";
+import React from "react";
 import axios from "axios";
 
-const CodeEditor = ({ transcript, manualPrompt, setGeneratedCode, generatedCode }) => {
-  const [compileOutput, setCompileOutput] = useState(""); // terminal-style output
-  const [filename, setFilename] = useState("my_code.py"); // editable filename
-  const codeBoxRef = useRef(null);
-
+function CodeEditor({
+  transcript,
+  manualPrompt,
+  generatedCode,
+  setGeneratedCode,
+  handleCompile,
+  handleSaveFile,
+  compileOutput,
+}) {
+  // Generate code inside the editor
   const handleGenerateCode = async () => {
     const text = transcript || manualPrompt;
-    if (!text.trim()) return setCompileOutput("⚠️ Please provide a prompt.");
+    if (!text.trim()) return;
 
     try {
-      const res = await axios.post("http://localhost:5001/api/generate-code", { text });
+      const res = await axios.post("http://localhost:5000/api/generate-code", {
+        prompt: text, // ✅ fixed key
+      });
       setGeneratedCode(res.data.code || "No code generated.");
-      setCompileOutput("✅ Code generated successfully.");
     } catch (err) {
       console.error("Code generation failed:", err);
-      setCompileOutput("❌ Error generating code.");
+      setGeneratedCode("❌ Error generating code.");
     }
   };
 
-  const handleSaveFile = () => {
-    const blob = new Blob([generatedCode], { type: "text/plain;charset=utf-8" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename || "code.py";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setCompileOutput(`📦 Code saved as '${filename}'`);
-  };
-
-  const handleCompile = async () => {
+  // Compile code inside the editor
+  const handleCompileCode = async () => {
     try {
-      const res = await axios.post("http://localhost:5001/api/compile", {
+      const res = await axios.post("http://localhost:5000/api/compile", {
         code: generatedCode,
+        inputs: [],
       });
-      setCompileOutput(res.data.output || "⚠️ No output received.");
+      alert(res.data.stdout || res.data.stderr || "⚠️ No output received.");
     } catch (err) {
       console.error("Compilation error:", err);
-      setCompileOutput("❌ Error compiling code.");
+      alert("❌ Error compiling code.");
     }
   };
 
-  // Auto-scroll to code area when code updates
-  useEffect(() => {
-    if (codeBoxRef.current) {
-      codeBoxRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [generatedCode]);
-
   return (
-    <div className="w-full max-w-2xl bg-white p-4 rounded shadow">
-      <div className="flex gap-2 mb-4">
+    <div className="bg-white rounded-xl shadow-lg p-4 flex flex-col">
+      <h2 className="text-xl font-semibold mb-2">📝 Code Editor</h2>
+
+      <textarea
+        className="flex-1 w-full p-3 rounded-lg border focus:ring-2 focus:ring-purple-500 resize-none"
+        rows="12"
+        value={generatedCode}
+        onChange={(e) => setGeneratedCode(e.target.value)}
+      />
+
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           onClick={handleGenerateCode}
-          className="bg-green-600 text-white px-4 py-2 rounded"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg shadow"
         >
-          ⚡ Generate Code
+          Generate
         </button>
         <button
-          onClick={handleCompile}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          onClick={handleCompileCode}
+          className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg shadow"
         >
-          🧪 Compile
+          Compile
         </button>
         <button
           onClick={handleSaveFile}
-          className="bg-purple-600 text-white px-4 py-2 rounded"
+          className="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg shadow"
         >
-          💾 Save
+          Save
         </button>
       </div>
 
-      <div className="mb-2">
-        <label className="block text-sm font-medium">📝 Filename:</label>
-        <input
-          type="text"
-          value={filename}
-          onChange={(e) => setFilename(e.target.value)}
-          className="border border-gray-300 px-3 py-1 w-full rounded mt-1"
-          placeholder="Enter filename like script.py"
-        />
-      </div>
-
-      <div className="mb-4" ref={codeBoxRef}>
-        <label className="block font-medium mb-1">💻 Generated Code:</label>
-        <pre className="bg-gray-100 p-4 rounded overflow-x-auto whitespace-pre-wrap">
-          {generatedCode || "Your code will appear here."}
-        </pre>
-      </div>
-
-      <div>
-        <label className="block font-medium mb-1">📟 Terminal Output:</label>
-        <pre className="bg-black text-green-400 p-4 rounded overflow-x-auto whitespace-pre-wrap h-40">
-          {compileOutput || "Your output will appear here."}
-        </pre>
-      </div>
+      {compileOutput && (
+        <div className="mt-4 p-3 bg-gray-100 rounded-lg border text-sm whitespace-pre-wrap">
+          {compileOutput}
+        </div>
+      )}
     </div>
   );
-};
+}
 
 export default CodeEditor;
