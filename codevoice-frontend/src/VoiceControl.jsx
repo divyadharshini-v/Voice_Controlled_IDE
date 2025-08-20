@@ -9,6 +9,7 @@ const VoiceControl = ({
   onGenerateCode,
   onCompileCode,
   onSaveCode,
+  onCopyCode,
 }) => {
   const recognitionRef = useRef(null);
   const listeningRef = useRef(false);
@@ -38,32 +39,34 @@ const VoiceControl = ({
         console.log("Command: Start Recording");
         onStartRecording();
         listeningRef.current = true;
-        return;
       }
 
       if (transcriptText.includes("stop recording")) {
         console.log("Command: Stop Recording");
-        onStopRecording();
         listeningRef.current = false;
-        return;
+        onStopRecording();
+        // Do not return here; allow transcript to be appended if isRecording is true
       }
 
       if (transcriptText.includes("generate code")) {
         console.log("Command: Generate Code");
         onGenerateCode();
-        return;
       }
 
       if (transcriptText.includes("compile")) {
         console.log("Command: Compile Code");
         onCompileCode();
-        return;
       }
+
 
       if (transcriptText.includes("save")) {
         console.log("Command: Save Code");
         onSaveCode();
-        return;
+      }
+
+      if (transcriptText.includes("copy")) {
+        console.log("Command: Copy Code");
+        if (onCopyCode) onCopyCode();
       }
 
       // Append transcript only if recording is active

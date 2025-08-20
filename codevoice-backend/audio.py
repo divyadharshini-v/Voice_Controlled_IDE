@@ -3,7 +3,7 @@ import numpy as np
 import keyboard
 from scipy.io.wavfile import write
 import os
-import pylance 
+
 
 def record_audio(question_id, user_name):
     fs = 44100  # Sample rate
@@ -11,7 +11,6 @@ def record_audio(question_id, user_name):
     output_dir = os.path.join(os.path.dirname(__file__), "audio")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f"answer_{user_name}_{question_id}.wav")
-
     print("Recording... Press Enter to stop.")
     frames = []
 
